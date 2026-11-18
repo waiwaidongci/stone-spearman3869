@@ -1,0 +1,4 @@
+# 仅本地/CI 测试使用，不进入运行镜像（见 Dockerfile 只安装 requirements.txt）
+pytest==8.3.4
+fakeredis==2.26.2
+httpx==0.28.1

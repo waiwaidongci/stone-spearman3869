@@ -12,6 +12,16 @@
 - 并列平均秩Spearman与固定seed置换p、散点分组解释。并列值使用平均秩；置换检验假定独立且可交换的试件。相关关系只支持后续假设，不解释为因果。
 - 每次运行冻结参数、观测和SHA256。Redis任务由独立worker计算，写DB与共享产物卷；输入修改不会改写历史结果。
 - 负责人复核不可覆盖；审计记录登录、数据改动、排队、复核与导出；240请求/分钟限流、全局可恢复错误。
+- 差分隐私公开研究（原内部研究完整保留）：孔隙率与吸水率按**预设固定 10×10 网格**（0–100，步长10，边界不依赖数据）联合计数，对**全部单元含空格**独立加 Laplace 噪声，再由加噪行/列边际的平均秩推导 Spearman 秩相关；公开结果只有加噪计数、加噪边际、秩相关与机制说明，**不含单件原值或精确人数**。
+
+### 差分隐私口径与隐私预算纪律
+- 敏感度：增删一个试件只改变恰好一个网格单元计数 1，联合计数向量的 L1 敏感度 Δ=1；噪声尺度 b=Δ/ε=1/ε，单次发布满足 ε-差分隐私。加噪后截断为非负整数、由边际推导秩相关均为后处理，不额外消耗预算。
+- 全局单行预算（默认总额 ε=1.0，`DP_TOTAL_EPSILON` 配置，部署后接口不可重置）：同批所有版本共用；**申请在公开前即扣费**，扣费与台账写入同一事务，`SELECT ... FOR UPDATE` 行锁串行化并发申请，余额不足整笔拒绝，并以数据库 `CHECK(spent<=total)` 约束兜底，绝不超支。
+- 数据更正不恢复额度；计算中断/失败的重试**沿用已持久化噪声**（首次抽样即落库），不重新抽样、不重复扣费；公开后撤销只改状态，**不退费**。
+- 公开前强制一致性校验：结果指纹、扣费台账与产物卷中的结果文件三者不一致（含文件缺失/被篡改）时禁止公开。
+- 前端「差分隐私」页可申请发布、查看预算余额与每个申请的发布状态（已扣费待计算/计算中/待公开/已公开/失败可重试/已撤销不退费）；公开与撤销仅 admin，所有登录角色可申请与查看。
+- 状态机：`reserved → computing → ready → published → revoked`，失败为 `failed`（可重试，复用同一台账序号与噪声）。
+
 
 ## 快速启动
 ```bash
@@ -48,7 +58,15 @@ docker compose exec -T backend python -m scripts.seed_demo
 
 `frontend/src/`分api、stores、types、components/common、hooks、pages、router、utils、constants；`backend/src/`分config、models、schemas、services、controllers、routes、middlewares、utils、constants；`backend/scripts/seed_demo.py`自然键插入、重复不覆盖修改；`backend/migrations/README.md`说明schema版本。
 
-环境变量 `.env.example`：COMPOSE_PROJECT_NAME、FRONTEND_PORT、BACKEND_PORT、DB_PORT、DB_PASSWORD、JWT_SECRET、SEED_DEMO。开发时在本地venv安装backend/requirements.txt，设置DATABASE_URL、REDIS_URL、JWT_SECRET再运行uvicorn；前端开发经Nginx代理 `/api/` 到不带前缀的API。
+环境变量 `.env.example`：COMPOSE_PROJECT_NAME、FRONTEND_PORT、BACKEND_PORT、DB_PORT、DB_PASSWORD、JWT_SECRET、SEED_DEMO、DP_TOTAL_EPSILON、DP_MASTER_SEED。开发时在本地venv安装backend/requirements.txt，设置DATABASE_URL、REDIS_URL、JWT_SECRET再运行uvicorn；前端开发经Nginx代理 `/api/` 到不带前缀的API。
+
+后端测试（SQLite + fakeredis，无需外部服务）：
+```bash
+python -m venv .venv && . .venv/bin/activate
+pip install -r backend/requirements.txt -r backend/requirements-test.txt
+cd backend && python -m pytest
+```
+覆盖：DP算法与scipy分组口径一致性、空格加噪、并发不超支、持久化噪声与重试不重复扣费、数据更正不恢复额度、公开前文件/指纹一致性拦截、撤销不退费、公开CSV不含原值或精确人数、HTTP端到端鉴权与状态机。
 
 共享枚举：角色admin/analyst/viewer和队列queued/running/completed/failed；后端`src/constants/enums.py`、认证与worker使用相同值；前端`src/types/enums.js`、状态与角色界面使用相同值。Google Fonts：Noto Serif SC + IBM Plex Mono；断网使用serif/monospace回退。
 

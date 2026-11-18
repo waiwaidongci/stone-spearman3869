@@ -33,6 +33,8 @@ services:
       REDIS_URL: redis://redis:6379/0
       JWT_SECRET: ${JWT_SECRET:-local-demo-stone-spearman-replace-for-production}
       SEED_DEMO: ${SEED_DEMO:-true}
+      DP_TOTAL_EPSILON: ${DP_TOTAL_EPSILON:-1.0}
+      DP_MASTER_SEED: ${DP_MASTER_SEED:-20261118}
     ports: ["${BACKEND_PORT:-19243}:8000"]
     volumes: ["run-artifacts:/app/artifacts"]
     depends_on:
